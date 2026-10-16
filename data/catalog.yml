@@ -1,0 +1,24 @@
+# Building blocks that devices refer to. Generic, fictional models.
+
+# Prefix roles in IPAM (referenced by "role" in standard_vlans.yml)
+ipam_roles:
+  - {name: Users,    slug: users}
+  - {name: Guest,    slug: guest}
+  - {name: Voice,    slug: voice}
+  - {name: Mgmt,     slug: mgmt}
+  - {name: Printers, slug: printers}
+  - {name: IoT,      slug: iot}
+
+manufacturers:
+  - {name: Generic, slug: generic}
+
+# zabbix_template is a custom field, used later by netbox-zabbix-sync
+device_types:
+  - {model: Core Switch 48x10G,  slug: core-switch-48x10g,  manufacturer: generic, zabbix_template: "Network Generic Device by SNMP"}
+  - {model: Access Switch 24x1G, slug: access-switch-24x1g, manufacturer: generic, zabbix_template: "Network Generic Device by SNMP"}
+  - {model: Firewall 100,        slug: firewall-100,        manufacturer: generic, zabbix_template: "Network Generic Device by SNMP"}
+
+device_roles:
+  - {name: Core,     slug: core,     color: "1565c0"}
+  - {name: Access,   slug: access,   color: "2e7d32"}
+  - {name: Firewall, slug: firewall, color: "c62828"}

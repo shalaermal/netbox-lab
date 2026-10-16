@@ -1,0 +1,11 @@
+# Sites in the lab. All data is fictional.
+# "number" is used to build IP addresses: 10.<number>.<vlan>.0/24
+- name: LAB01
+  slug: lab01
+  number: 1
+  description: Lab office 1 (fictional)
+
+- name: LAB02
+  slug: lab02
+  number: 2
+  description: Lab office 2 (fictional)

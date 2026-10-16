@@ -1,0 +1,12 @@
+# Devices. Each device gets a "mgmt0" interface and a management IP:
+#   10.<site number>.99.<mgmt_host>/24
+# mgmt_host must be unique inside a site.
+- {name: LAB01-FW-01,   site: lab01, type: firewall-100,        role: firewall, mgmt_host: 1}
+- {name: LAB01-CORE-01, site: lab01, type: core-switch-48x10g,  role: core,     mgmt_host: 2}
+- {name: LAB01-CORE-02, site: lab01, type: core-switch-48x10g,  role: core,     mgmt_host: 3}
+- {name: LAB01-ACC-01,  site: lab01, type: access-switch-24x1g, role: access,   mgmt_host: 11}
+- {name: LAB01-ACC-02,  site: lab01, type: access-switch-24x1g, role: access,   mgmt_host: 12}
+
+- {name: LAB02-FW-01,   site: lab02, type: firewall-100,        role: firewall, mgmt_host: 1}
+- {name: LAB02-CORE-01, site: lab02, type: core-switch-48x10g,  role: core,     mgmt_host: 2}
+- {name: LAB02-ACC-01,  site: lab02, type: access-switch-24x1g, role: access,   mgmt_host: 11}

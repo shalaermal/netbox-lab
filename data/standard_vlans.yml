@@ -1,0 +1,9 @@
+# Standard VLANs created in EVERY site (each site gets its own VLAN group).
+# vid must be 1-254, because it is also used as the 3rd octet of the prefix.
+# role = prefix role in IPAM.
+- {vid: 11,  name: Users,    role: users}
+- {vid: 13,  name: Visitors, role: guest}
+- {vid: 20,  name: Voice,    role: voice}
+- {vid: 99,  name: Mgmt,     role: mgmt}
+- {vid: 115, name: Printers, role: printers}
+- {vid: 116, name: IoT,      role: iot}
