@@ -21,13 +21,20 @@ fi
 #  - publish NetBox on port 8000
 #  - trust the Codespaces https address (otherwise login fails with a CSRF error)
 #  - create the admin user automatically on first start
-cat > "$NBD_DIR/docker-compose.override.yml" <<'EOF'
+# Exact public address of port 8000 in this Codespace (a wildcard is not enough)
+if [ -n "${CODESPACE_NAME:-}" ]; then
+  ORIGIN="https://${CODESPACE_NAME}-8000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+else
+  ORIGIN="https://*.app.github.dev"
+fi
+
+cat > "$NBD_DIR/docker-compose.override.yml" <<EOF
 services:
   netbox:
     ports:
       - "8000:8080"
     environment:
-      CSRF_TRUSTED_ORIGINS: "https://*.app.github.dev http://localhost:8000"
+      CSRF_TRUSTED_ORIGINS: "${ORIGIN} http://localhost:8000"
       SKIP_SUPERUSER: "false"
       SUPERUSER_NAME: "admin"
       SUPERUSER_EMAIL: "admin@lab.local"
