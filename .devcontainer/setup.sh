@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NBD_DIR="/workspaces/netbox-docker"
 
-pip install --user -r "$REPO_DIR/requirements.txt"
+python3 -m pip install --user -r "$REPO_DIR/requirements.txt"
 
 # Local settings file for the scripts (never committed, see .gitignore)
 if [ ! -f "$REPO_DIR/.env" ]; then
