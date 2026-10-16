@@ -1,0 +1,15 @@
+!
+! {{ hostname }}  ({{ model }}, role {{ role }}, {{ site }} {{ location }})
+! GENERATED FROM NETBOX - DO NOT EDIT BY HAND.
+! Change the intent / NetBox, then run: python -m nblab render
+! Secrets are placeholders like <<NAME>>; they are filled in at deploy time.
+!
+{% include "aruba-cx/system.j2" %}
+{% include "aruba-cx/aaa.j2" %}
+{% include "aruba-cx/vlans.j2" %}
+{% include "aruba-cx/stp.j2" %}
+{% include "aruba-cx/interfaces.j2" %}
+{% if vsx %}
+{% include "aruba-cx/vsx.j2" %}
+{% endif %}
+{% include "aruba-cx/routing.j2" %}

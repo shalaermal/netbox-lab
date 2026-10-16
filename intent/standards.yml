@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------------------
+# Company-wide standards. Pushed to NetBox as a Config Context, so every
+# device sees them in NetBox under "Config Context" and the templates use them.
+# Values are fictional placeholders. NEVER put real secrets in git: the
+# templates print a <PLACEHOLDER> and the real secret is added at deploy time.
+# ---------------------------------------------------------------------------
+dns_servers: [10.1.30.53, 10.1.30.54]
+ntp_servers: [10.1.30.123, 10.1.30.124]
+dhcp_servers: [10.1.30.67, 10.1.30.68]    # DHCP relay target on client VLAN gateways
+syslog_servers: [10.1.30.60]
+snmp:
+  v3_user: netmon
+  location_prefix: "LAB01"
+tacacs_servers: [10.1.30.49, 10.1.30.50]
+banner: |
+  ********************************************************
+  *  Authorized access only. All activity is logged.     *
+  ********************************************************
+ospf:
+  process: 1
+  area: 0.0.0.0
+spanning_tree:
+  mode: mstp
+  config_name: LAB01
+  config_revision: 1
+active_gateway_mac: "12:00:00:00:01:00"
+mtu_infra: 9198         # jumbo on core/agg/ISL links
+timezone: europe/berlin

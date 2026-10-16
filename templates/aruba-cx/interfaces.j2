@@ -1,0 +1,123 @@
+{# ------------------------------------------------------------------ helpers #}
+{% macro l2(i) %}
+    no routing
+{% if i.mode == "access" %}
+    vlan access {{ i.untagged }}
+{% elif i.mode == "tagged" %}
+    vlan trunk native {{ i.untagged if i.untagged else 1 }}
+    vlan trunk allowed {{ i.allowed }}
+{% elif i.mode == "tagged-all" %}
+    vlan trunk native 1
+    vlan trunk allowed all
+{% endif %}
+{% endmacro %}
+{% macro state(i) %}
+{% if i.enabled %}
+    no shutdown
+{% else %}
+    shutdown
+{% endif %}
+{% endmacro %}
+{# ------------------------------------------------------------------ mgmt #}
+{% if mgmt %}
+!
+interface mgmt
+{% if mgmt.ips %}
+    no shutdown
+    ip static {{ mgmt.ips[0] }}
+    default-gateway {{ mgmt_gw }}
+{% else %}
+    shutdown
+{% endif %}
+{% endif %}
+{# ------------------------------------------------------------------ LAGs first: members refer to them #}
+{% for i in interfaces if i.kind == "lag" %}
+!
+interface {{ i.cx }}{{ " multi-chassis" if i.mclag else "" }}
+{% if i.description %}
+    description {{ i.description }}
+{% endif %}
+{{ state(i) }}
+{% if i.mtu %}
+    mtu {{ i.mtu }}
+{% endif %}
+{{ l2(i) }}
+    lacp mode active
+{% if i.root_guard %}
+    spanning-tree root-guard
+{% endif %}
+{% if i.dhcp_trust %}
+    dhcpv4-snooping trust
+{% endif %}
+{% endfor %}
+{# ------------------------------------------------------------------ physical ports #}
+{% for i in interfaces if i.kind == "physical" %}
+!
+interface {{ i.cx }}
+{% if i.description %}
+    description {{ i.description }}
+{% endif %}
+{{ state(i) }}
+{% if i.mtu %}
+    mtu {{ i.mtu }}
+{% endif %}
+{% if i.member_of %}
+    lag {{ i.member_of }}
+{% elif i.routed %}
+    routing
+{% if i.vrf %}
+    vrf attach {{ i.vrf }}
+{% endif %}
+{% if i.mtu %}
+    ip mtu {{ i.mtu }}
+{% endif %}
+    ip address {{ i.ips[0] }}
+{% if i.ospf %}
+    ip ospf {{ std.ospf.process }} area {{ std.ospf.area }}
+{% if i.ospf_p2p %}
+    ip ospf network point-to-point
+{% endif %}
+{% endif %}
+{% elif i.mode %}
+{{ l2(i) }}
+{% if i.edge %}
+    spanning-tree port-type admin-edge
+    spanning-tree bpdu-guard
+    loop-protect
+{% endif %}
+{% endif %}
+{% endfor %}
+{# ------------------------------------------------------------------ loopbacks #}
+{% for i in interfaces if i.kind == "loopback" and i.ips %}
+!
+interface {{ i.cx }}
+    ip address {{ i.ips[0] }}
+{% if i.ospf %}
+    ip ospf {{ std.ospf.process }} area {{ std.ospf.area }}
+{% endif %}
+{% endfor %}
+{# ------------------------------------------------------------------ SVIs #}
+{% for i in interfaces if i.kind == "svi" %}
+!
+interface {{ i.cx }}
+{% if i.description %}
+    description {{ i.description }}
+{% endif %}
+{{ state(i) }}
+{% for ip in i.ips %}
+    ip address {{ ip }}
+{% endfor %}
+{% if i.vip %}
+    active-gateway ip mac {{ std.active_gateway_mac }}
+    active-gateway ip {{ i.vip }}
+{% endif %}
+{% for h in i.helpers %}
+    ip helper-address {{ h }}
+{% endfor %}
+{% if i.ospf %}
+    ip ospf {{ std.ospf.process }} area {{ std.ospf.area }}
+{% if i.ospf_passive %}
+    ip ospf passive
+{% endif %}
+{% endif %}
+{% endfor %}

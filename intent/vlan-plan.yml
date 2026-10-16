@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# VLAN and IP plan. Rule: the VLAN ID is ALSO the 3rd octet of the subnet,
+# so VLAN 113 on site 1 is always 10.1.113.0/24. Easy to read, hard to mix up.
+#
+# Every /24 uses the same gateway rule (VSX active-gateway on the agg pair):
+#   .1 = virtual gateway (VIP), .2 = AGG-01, .3 = AGG-02
+# ---------------------------------------------------------------------------
+
+# Repeated on every floor:  vid = 100 + 10 * floor + offset
+# floor 1 -> 110..117, floor 6 -> 160..167  (8 functions x 6 floors = 48 VLANs)
+floor_functions:
+  - {offset: 0, name: Users,       role: users}
+  - {offset: 1, name: Voice,       role: voice}
+  - {offset: 2, name: Printers,    role: printers}
+  - {offset: 3, name: IoT,         role: iot}
+  - {offset: 4, name: Cameras,     role: cameras}
+  - {offset: 5, name: BMS,         role: bms}
+  - {offset: 6, name: Lab,         role: lab}
+  - {offset: 7, name: Wired-Guest, role: guest}
+
+# Site-wide VLANs. on_access: true -> trunked to every access switch.
+site_vlans:
+  - {vid: 20, name: WiFi-Corp,     role: wifi,     on_access: true}
+  - {vid: 21, name: WiFi-Guest,    role: guest,    on_access: true}
+  - {vid: 22, name: WiFi-IoT,      role: iot,      on_access: true}
+  - {vid: 23, name: WiFi-Voice,    role: voice,    on_access: true}
+  - {vid: 30, name: Servers,       role: servers,  on_access: false}
+  - {vid: 31, name: Storage,       role: servers,  on_access: false}
+  - {vid: 32, name: Backup,        role: servers,  on_access: false}
+  - {vid: 40, name: VideoConf,     role: av,       on_access: true}
+  - {vid: 50, name: AccessControl, role: security, on_access: true}
+  - {vid: 51, name: BMS-Core,      role: bms,      on_access: false}
+  - {vid: 98, name: AP-Mgmt,       role: mgmt,     on_access: true}
+  - {vid: 99, name: Net-Mgmt,      role: mgmt,     on_access: true}   # in-band mgmt of access switches
+
+# Special VLANs (not built from the rules above)
+parking_vlan: {vid: 999, name: Parking}     # unused ports; no gateway, no prefix, goes nowhere
+firewall_transit:
+  vid: 900
+  name: FW-Transit
+  third_octet: 250        # 10.<site>.250.0/29: .1 firewall, .2 CORE-01, .3 CORE-02, .4 core VIP
+
+# Infrastructure ranges (3rd octet inside 10.<site>.0.0/16)
+infra:
+  p2p: 251          # /31 routed links core <-> agg
+  keepalive: 252    # /31 VSX keepalive links (VRF KA)
+  oob: 253          # out-of-band mgmt ports of core/agg/firewall (VRF mgmt), gateway .1
+  loopback: 254     # /32 router IDs
+  access_mgmt_vlan: 99
+  access_mgmt_first_host: 101   # access switch #1 -> 10.<site>.99.101

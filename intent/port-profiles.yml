@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Edge port profiles for access switches. VLANs are referenced by:
+#   floor: <function name>   -> that function's VLAN on the switch's own floor
+#   site:  <vid>             -> a site-wide VLAN
+#
+# Real deployments usually add 802.1X / MAC auth (port-access) on top;
+# here every port gets a static profile, which is the baseline you start from.
+# ---------------------------------------------------------------------------
+profiles:
+  user:
+    description: USER
+    mode: tagged                 # PC untagged + IP phone tagged
+    untagged: {floor: Users}
+    tagged: [{floor: Voice}]
+    edge: true
+  ap:
+    description: AP
+    mode: tagged                 # AP management untagged, SSIDs tagged (bridged APs)
+    untagged: {site: 98}
+    tagged: [{site: 20}, {site: 21}, {site: 22}, {site: 23}]
+    edge: true
+  printer:
+    description: PRINTER
+    mode: access
+    untagged: {floor: Printers}
+    edge: true
+  camera:
+    description: CAMERA
+    mode: access
+    untagged: {floor: Cameras}
+    edge: true
+  iot:
+    description: IOT
+    mode: access
+    untagged: {floor: IoT}
+    edge: true
+  unused:
+    description: UNUSED
+    mode: access
+    untagged: {parking: true}
+    enabled: false               # shut down until somebody needs it
+    edge: true
+
+# Which ports of every access switch get which profile (ports 1-48).
+access_port_map:
+  - {ports: "1-36",  profile: user}
+  - {ports: "37-40", profile: ap}
+  - {ports: "41-42", profile: printer}
+  - {ports: "43-44", profile: camera}
+  - {ports: "45-46", profile: iot}
+  - {ports: "47-48", profile: unused}

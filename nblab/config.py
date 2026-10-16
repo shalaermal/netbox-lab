@@ -1,4 +1,4 @@
-"""Shared helpers for the lab scripts: settings, NetBox connection, YAML data."""
+"""Paths, constants and the NetBox connection."""
 
 import os
 import sys
@@ -7,10 +7,18 @@ from pathlib import Path
 import yaml
 
 REPO_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = REPO_DIR / "data"
+INTENT_DIR = REPO_DIR / "intent"
+DEVICETYPE_DIR = REPO_DIR / "devicetypes"
+TEMPLATE_DIR = REPO_DIR / "templates"
+CONFIG_DIR = REPO_DIR / "configs"
 
-TAG_SLUG = "lab-managed"  # every object the scripts create gets this tag
-MGMT_VID = 99             # VLAN used for management IPs
+TAG = "lab-managed"          # every object created by the code gets this tag
+PLATFORM = {"name": "Aruba AOS-CX", "slug": "aruba-aoscx"}
+
+
+def load_yaml(path):
+    with open(path, encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
 
 
 def load_env():
@@ -27,7 +35,7 @@ def load_env():
 
 
 def connect():
-    """Return a pynetbox API object. Works with old (40 hex) and new (nbt_...) tokens."""
+    """Return a pynetbox API object (v2 'nbt_' tokens and old tokens both work)."""
     import pynetbox
 
     load_env()
@@ -37,34 +45,9 @@ def connect():
         token = token[7:].strip()
     if not token or token == "PASTE_TOKEN_HERE":
         sys.exit("NETBOX_TOKEN is missing. Create a token in NetBox and put it in .env")
-
-    # pynetbox >= 7.6 sends "Bearer" for v2 tokens (nbt_...) and "Token" for old ones
     nb = pynetbox.api(url, token=token)
-
     try:
         nb.status()
     except Exception as exc:  # noqa: BLE001
         sys.exit(f"Cannot reach NetBox at {url}: {exc}")
     return nb
-
-
-def load_yaml(name):
-    with open(DATA_DIR / name, encoding="utf-8") as fh:
-        return yaml.safe_load(fh) or []
-
-
-def load_data():
-    return {
-        "sites": load_yaml("sites.yml"),
-        "vlans": load_yaml("standard_vlans.yml"),
-        "catalog": load_yaml("catalog.yml"),
-        "devices": load_yaml("devices.yml"),
-    }
-
-
-def prefix_for(site_number, vid):
-    return f"10.{site_number}.{vid}.0/24"
-
-
-def mgmt_ip_for(site_number, host):
-    return f"10.{site_number}.{MGMT_VID}.{host}/24"

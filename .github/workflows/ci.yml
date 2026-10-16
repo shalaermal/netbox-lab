@@ -1,0 +1,22 @@
+name: CI
+
+# Runs on every push / pull request. Needs no NetBox: it checks that the
+# intent still produces a valid design (unique IPs, dual-homed access,
+# symmetric MC-LAGs, every VLAN has a gateway ...).
+on:
+  push:
+  pull_request:
+
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Build design from intent
+        run: python -m nblab design
+      - name: Design rules
+        run: pytest -q

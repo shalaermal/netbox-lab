@@ -1,0 +1,17 @@
+{% if routes %}
+!
+{% for r in routes %}
+! {{ r.comment }}
+ip route {{ r.prefix }} {{ r.nexthop }}
+{% endfor %}
+{% endif %}
+{% if ospf_enabled %}
+!
+router ospf {{ std.ospf.process }}
+    router-id {{ router_id }}
+{% if default_originate %}
+    default-information originate
+{% endif %}
+    area {{ std.ospf.area }}
+{% endif %}
+!

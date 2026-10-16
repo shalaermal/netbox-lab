@@ -1,0 +1,19 @@
+---
+# Fictional firewall model for the lab (no config is generated for it).
+manufacturer: Generic
+model: Lab Firewall 4P
+slug: lab-firewall-4p
+u_height: 1
+is_full_depth: false
+interfaces:
+  - name: port1
+    type: 10gbase-x-sfpp
+  - name: port2
+    type: 10gbase-x-sfpp
+  - name: port3
+    type: 10gbase-x-sfpp
+  - name: port4
+    type: 10gbase-x-sfpp
+  - name: mgmt
+    type: 1000base-t
+    mgmt_only: true

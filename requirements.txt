@@ -1,2 +1,4 @@
 pynetbox>=7.6
 PyYAML>=6.0
+Jinja2>=3.1
+pytest>=8.0

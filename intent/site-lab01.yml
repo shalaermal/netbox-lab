@@ -1,0 +1,46 @@
+# ---------------------------------------------------------------------------
+# DESIGN INTENT for one site. This file (plus vlan-plan.yml, port-profiles.yml
+# and standards.yml) is the ONLY thing you edit by hand. Everything else
+# (devices, cables, LAGs, VLANs, IPs in NetBox, then the switch configs)
+# is derived from it by code. All data is fictional.
+# ---------------------------------------------------------------------------
+site:
+  name: LAB01
+  slug: lab01
+  number: 1                 # site supernet = 10.<number>.0.0/16
+  description: Lab campus, 6 floors (fictional)
+  domain: lab01.lab.local
+  timezone: Europe/Berlin
+
+# Topology: 2 core (VSX) -> 2 aggregation (VSX) -> access switches (dual-homed
+# with MC-LAG). Firewalls are an HA pair, connected to the cores with MC-LAG.
+models:
+  core: hpe-aruba-8360-48y6c-front-to-back
+  agg: hpe-aruba-8360-48y6c-front-to-back
+  access: hpe-aruba-6300m-48g-poe4-4sfp56
+  firewall: lab-firewall-4p
+
+# How many access switches per floor. 44 access + 2 core + 2 agg + 2 FW = 50.
+floors:
+  - {floor: 1, access_switches: 7}
+  - {floor: 2, access_switches: 7}
+  - {floor: 3, access_switches: 7}
+  - {floor: 4, access_switches: 7}
+  - {floor: 5, access_switches: 8}
+  - {floor: 6, access_switches: 8}
+
+# VSX pairs: the system MAC must be unique per pair in the whole network.
+vsx:
+  core: {system_mac: "02:00:01:00:00:01"}
+  agg:  {system_mac: "02:00:01:00:00:02"}
+
+# Physical port plan (used to build cables, LAGs and ISLs).
+ports:
+  access_uplinks: ["1/1/49", "1/1/50"]    # 49 -> AGG-01, 50 -> AGG-02
+  agg_downlink_first: 1                   # access #1 -> 1/1/1, #2 -> 1/1/2 ...
+  agg_uplinks: ["1/1/49", "1/1/50"]       # 49 -> CORE-01, 50 -> CORE-02
+  core_downlinks: ["1/1/49", "1/1/50"]    # 49 -> AGG-01, 50 -> AGG-02
+  core_firewall: ["1/1/1", "1/1/2"]       # 1/1/1 -> FW-01, 1/1/2 -> FW-02
+  firewall_ports: ["port1", "port2"]      # port1 -> CORE-01, port2 -> CORE-02
+  vsx_isl: ["1/1/53", "1/1/54"]           # on core and agg pairs
+  vsx_keepalive: "1/1/48"                 # dedicated routed link, VRF KA

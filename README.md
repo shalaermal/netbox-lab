@@ -1,75 +1,120 @@
-# NetBox Lab
+# NetBox Lab: nga dizajni te config-et
 
-Lab personal për të praktikuar NetBox, pynetbox, git dhe automatizim, krejt në browser me GitHub Codespaces. Të gjitha të dhënat janë **fiktive** (LAB01, LAB02, `10.x.x.x`). Mos fut kurrë IP, emra pajisjesh apo token-a nga puna.
+Lab personal për rrjedhën e plotë të një projekti të ri rrjeti, ashtu siç bëhet në kompani që punojnë me **source of truth**:
 
-## Si ta nisësh
-
-1. Te kjo repo: **Code → Codespaces → Create codespace on main**.
-2. Prit 5–10 minuta herën e parë. Codespace-i e shkarkon dhe e starton NetBox-in vetë.
-3. Poshtë, te tab-i **PORTS**, te porti **8000** kliko ikonën e globit 🌐.
-4. Hyr me **admin / netboxlab**.
-5. Në NetBox: **profili (lart djathtas) → API Tokens → Add a Token**, me *Write enabled*. Kopjoje token-in.
-6. Hape skedarin `.env` (krijohet vetë) dhe vendose token-in te `NETBOX_TOKEN=`.
-7. Në terminal:
-   ```bash
-   python scripts/build_lab.py
-   ```
-   Rifresko NetBox-in. Duhet të shohësh 2 site, 12 VLAN, 12 prefix dhe 8 pajisje me IP menaxhimi.
-
-Herët e tjera, Codespace-i e starton NetBox-in vetë. Nëse nuk hapet, në terminal:
-```bash
-cd /workspaces/netbox-docker && docker compose up -d
+```
+intent/*.yml  ──►  NetBox  ──►  check  ──►  configs/*.cfg
+ (dizajni)        (e vërteta)   (validim)    (Aruba CX)
 ```
 
-**Kur mbaron:** kutia blu majtas poshtë → **Stop Current Codespace**. Te GitHub **Settings → Codespaces** vendos *Default idle timeout* në 30 minuta.
+1. **Dizajnin** e shkruan një herë, si rregulla, në pak skedarë YAML (`intent/`).
+2. Kodi e nxjerr dizajnin e plotë dhe e **plotëson NetBox-in**: pajisjet, portat, kabllot, LAG-et, VLAN-et, prefix-et, IP-të.
+3. Kontrollet **validojnë NetBox-in**: trunk-e të njëjta në të dy anët, uplink të dyfishtë, gateway për çdo VLAN, VSX në rregull...
+4. Config-et e switch-ave **gjenerohen nga NetBox**, jo nga YAML-i. Nëse dikush ndryshon diçka në GUI, kjo shfaqet edhe te config-i.
+
+Të gjitha të dhënat janë **fiktive**. Mos fut kurrë IP, emra apo sekrete nga puna.
+
+---
+
+## Projekti shembull: LAB01
+
+| | |
+|---|---|
+| Topologjia | 2 core (VSX) → 2 agg (VSX) → 44 access, të lidhur me MC-LAG. 2 firewall në HA. |
+| Pajisjet | **50**: Aruba 8360-48Y6C (core/agg), Aruba 6300M-48G (access), firewall fiktiv |
+| VLAN | **62**: 8 funksione × 6 kate + 12 VLAN për krejt site-in + transit + parking |
+| Routing | OSPF area 0 core ↔ agg (/31), gateway-t me VSX active-gateway në agg, default te firewall-i |
+| Kabllo / LAG | 102 kabllo, 142 LAG |
+
+### Plani i IP-ve (rregulli: VLAN ID = okteti i 3-të)
+
+| Çka | Ku | Shembull |
+|---|---|---|
+| VLAN-et e kateve | `vid = 100 + 10×kati + funksioni` | Kati 1 Users = VLAN 110 = `10.1.110.0/24` |
+| VLAN-et e site-it | VLAN 20–99 | WiFi-Corp = VLAN 20 = `10.1.20.0/24` |
+| Gateway në çdo /24 | `.1` VIP, `.2` AGG-01, `.3` AGG-02 | `10.1.110.1` |
+| Firewall transit | VLAN 900, `10.1.250.0/29` | `.1` FW, `.2/.3` core, `.4` VIP e core-it |
+| P2P core-agg | `10.1.251.0/24` në /31 | |
+| VSX keepalive | `10.1.252.0/24`, VRF KA | |
+| OOB mgmt | `10.1.253.0/24`, VRF mgmt | |
+| Loopback | `10.1.254.x/32` | router-id |
+| Mgmt e access-ave | VLAN 99, `10.1.99.101` e tutje | |
+
+### Best practices që i zbaton kodi
+- **VSX** në core dhe agg: ISL `lag 256`, keepalive në port të dedikuar në VRF `KA`, system-mac unik për çdo çift.
+- **Access me dy uplink** në MC-LAG, pa porta të bllokuara nga STP.
+- **Edge ports**: `admin-edge`, `bpdu-guard`, `loop-protect`. MC-LAG-et e agg-së kanë `root-guard`, dhe agg-u është root bridge.
+- **DHCP snooping** në access (trust vetëm në uplink) dhe **DHCP relay** vetëm në VLAN-et e klientëve.
+- **Pruning i VLAN-eve**: çdo access merr vetëm VLAN-et e katit të vet plus ato të site-it, jo të 62.
+- **Portat që nuk përdoren janë `shutdown`**, dhe portat e lira të access-it janë në VLAN 999 Parking.
+- **Menaxhim i ndarë**: core/agg në OOB (VRF mgmt), access in-band në VLAN 99. Pa VLAN 1 si native në trunk.
+- **MTU jumbo** në lidhjet infrastrukturore, e vendosur te LAG-u (siç e kërkon AOS-CX).
+- **Sekretet nuk janë në git**: config-et kanë `<<TACACS_KEY>>`, `<<SNMP_AUTH_PASS>>` etj., që plotësohen në deploy.
+- **Idempotencë dhe "plan" para "apply"**: çdo ndryshim shihet para se të aplikohet, dhe ekzekutimi i dytë nuk ndryshon asgjë.
+
+---
+
+## Si ta nisësh (GitHub Codespaces)
+
+1. Te repo-ja: **Code → Codespaces → Create codespace on main**. Herën e parë merr 5–10 minuta; NetBox-i starton vetë.
+2. Te tab-i **PORTS** → porti **8000** → ikona e globit 🌐. Login: **admin / netboxlab**.
+3. Në NetBox: **profili → API Tokens → Add a Token** (Write enabled). Vendose token-in te `.env` (`NETBOX_TOKEN=`).
+4. Në terminal:
+
+```bash
+python -m nblab design     # çka prodhon dizajni (pa NetBox)
+python -m nblab plan       # çka do të ndryshojë në NetBox (nuk ndryshon asgjë)
+python -m nblab apply      # plotëson NetBox-in (herën e parë rreth 5 minuta)
+python -m nblab check      # validon të dhënat në NetBox
+python -m nblab render     # gjeneron configs/lab01/*.cfg
+```
+
+Komanda të tjera:
+```bash
+python -m nblab apply --prune   # fshin edhe objektet e lab-it që s'janë më në dizajn
+python -m nblab render --device LAB01-AGG-01
+python -m nblab reset --yes     # fshin gjithçka me tag-un lab-managed
+pytest -q                       # rregullat e dizajnit, pa NetBox
+```
+
+Kur mbaron: kutia blu majtas poshtë → **Stop Current Codespace**.
+
+---
 
 ## Struktura
 
 ```
-data/
-  sites.yml            site-et dhe numri i tyre (10.<numri>.x.x)
-  standard_vlans.yml   VLAN-et që krijohen në çdo site
-  catalog.yml          rolet IPAM, prodhuesit, device types, rolet e pajisjeve
-  devices.yml          pajisjet dhe IP-ja e menaxhimit
-scripts/
-  build_lab.py         e ndërton krejt lab-in nga YAML (mund ta ekzekutosh sa herë të duash)
-  check_quality.py     raport për gabimet në të dhëna (pa IP, pa VLAN, pa DNS...)
-  reset_lab.py         fshin gjithçka që kanë krijuar script-at (tag "lab-managed")
-  validate_data.py     kontrollon YAML-at pa NetBox (ekzekutohet edhe në GitHub Actions)
-  lablib.py            lidhja me NetBox dhe funksione të përbashkëta
-.devcontainer/         konfigurimi i Codespace-it (NetBox me Docker)
-.github/workflows/     kontrolli automatik në çdo push
+intent/                 ← VETËM këto i ndryshon me dorë
+  site-lab01.yml          site-i, katet, modelet, plani i portave, VSX
+  vlan-plan.yml           funksionet e VLAN-eve, VLAN-et e site-it, rangjet infra
+  port-profiles.yml       profilet e portave (user, ap, printer...) dhe ku vendosen
+  standards.yml           NTP, DNS, syslog, TACACS, OSPF, STP, MTU (config context)
+devicetypes/            modelet Aruba nga devicetype-library (portat reale)
+nblab/
+  design.py               intent → dizajni i plotë (pa NetBox, testohet offline)
+  sync.py                 plan / apply drejt NetBox
+  snapshot.py             lexon një site nga NetBox
+  checks.py               rregullat e validimit
+  render.py               NetBox → context → Jinja2
+templates/aruba-cx/     template-t sipas seksioneve (system, aaa, vlans, stp, interfaces, vsx, routing)
+configs/lab01/          config-et e gjeneruara (në git, që çdo ndryshim të shihet si diff)
+tests/                  rregullat e dizajnit, ekzekutohen edhe në GitHub Actions
 ```
 
-## Si funksionon
-
-- **YAML = çka do** (intent). Script-i e lexon dhe e krijon në NetBox.
-- Prefix-et llogariten vetë: site 1, VLAN 115 → `10.1.115.0/24`.
-- IP-ja e menaxhimit: site 1, `mgmt_host: 11` → `10.1.99.11/24`.
-- `build_lab.py` është **idempotent**: nëse objekti ekziston e përditëson, nëse jo e krijon. Mund ta ekzekutosh 10 herë dhe rezultati është i njëjti.
-- Çdo objekt merr tag-un `lab-managed`, kështu që `reset_lab.py` fshin vetëm ato, jo gjërat që i krijon me dorë.
+---
 
 ## Ushtrime
 
-1. **Njihu me modelin.** Hape një pajisje në GUI dhe gjej site-in, rolin, interface-in `mgmt0`, IP-në primare dhe VLAN-in e prefix-it.
-2. **Shto një site.** Shto `LAB03` me `number: 3` te `sites.yml` dhe dy pajisje te `devices.yml`. Ekzekuto `validate_data.py`, pastaj `build_lab.py`.
-3. **Shto një VLAN standard.** Shto `{vid: 30, name: Cameras, role: iot}` te `standard_vlans.yml`. Ekzekuto `build_lab.py` dhe shiko që u krijua në të gjitha site-et.
-4. **Thyeje me qëllim.** Në GUI fshij IP-në e një pajisjeje dhe hiq VLAN-in nga një prefix. Ekzekuto `check_quality.py` dhe shiko a i kap. Pastaj `build_lab.py` i rregullon.
-5. **Fshij krejt dhe rindërto.** `python scripts/reset_lab.py --yes`, pastaj `build_lab.py`. Ky është përfitimi i madh: NetBox-i mund të rindërtohet nga git.
-6. **Git workflow.** Krijo branch `add-lab03`, bëj ndryshimin, `git push` dhe hap Pull Request. GitHub Actions ekzekuton `validate_data.py`. Provo me qëllim një gabim (p.sh. dy pajisje me të njëjtin emër) dhe shiko që PR-i del i kuq.
-7. **Script i yti.** Shkruaj `scripts/export_csv.py` që i nxjerr të gjitha pajisjet me IP në CSV.
-8. **Më vonë:** shto Zabbix në Codespace dhe lidhe me `netbox-zabbix-sync`. Custom fields `zabbix_hostid` dhe `zabbix_template` i krijon tashmë `build_lab.py`.
+1. **Lexo një config.** Hap `configs/lab01/LAB01-AGG-01.cfg` dhe gjej: MC-LAG-un e `F1-ACC-01`, gateway-in e VLAN 110 dhe keepalive-in e VSX. Pastaj gjej të njëjtat në NetBox GUI.
+2. **Shto një kat.** Shto `{floor: 7, access_switches: 3}` te `site-lab01.yml`. Ekzekuto `plan`: sa pajisje, kabllo dhe VLAN dalin? Pastaj `apply`, `check`, `render`, dhe shiko `git diff configs/`.
+3. **Ndrysho një profil.** Bëj portat 41–42 `camera` në vend të `printer`. Shiko që `plan` prek vetëm ato porta.
+4. **Gabim në GUI.** Në NetBox, hiq VLAN 113 nga `lag5` në AGG-02. Ekzekuto `check`: duhet të dalin dy gabime (trunk dhe mclag) dhe `render` refuzon. `plan` e tregon devijimin, `apply` e rregullon.
+5. **Gabim në intent.** Vendos dy profile në të njëjtat porta, ose shto aq access sa përplasen me portin e keepalive. Shiko që `pytest` (dhe CI-ja në GitHub) e kap para se të prekë NetBox-in.
+6. **Shto një rregull të ri** te `checks.py`, p.sh. "çdo port i ndezur në access duhet të ketë përshkrim".
+7. **Workflow si në kompani.** Branch → ndryshim në `intent/` → `apply` + `render` → commit edhe të config-eve → Pull Request. Reviewer-i e sheh ndryshimin si diff te `configs/`.
 
-## Komanda të dobishme
-
-```bash
-python scripts/validate_data.py          # kontrollo YAML-at
-python scripts/build_lab.py              # ndërto ose përditëso lab-in
-python scripts/check_quality.py          # raporti i cilësisë
-python scripts/check_quality.py --strict # kthen gabim nëse ka probleme
-python scripts/reset_lab.py --yes        # fshij objektet e lab-it
-
-cd /workspaces/netbox-docker
-docker compose ps                        # statusi i NetBox-it
-docker compose logs -f netbox            # log-et
-```
+## Hapat e ardhshëm
+- **Deploy**: Nornir + Scrapli/NAPALM me `diff` para `commit`, kur të kesh pajisje (p.sh. në EVE-NG).
+- **NetBox Config Templates**: template-t ruhen në NetBox si Data Source nga git, dhe config-i shihet direkt te pajisja.
+- **802.1X/MAC auth** në porta (port-access) në vend të profileve statike.
+- **Monitorim**: Zabbix i lidhur me NetBox me `netbox-zabbix-sync`.
