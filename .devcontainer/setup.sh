@@ -21,7 +21,8 @@ fi
 #  - publish NetBox on port 8000
 #  - trust the Codespaces https address (otherwise login fails with a CSRF error)
 #  - create the admin user automatically on first start
-# Exact public address of port 8000 in this Codespace (a wildcard is not enough)
+# Trusted origins for login. The Codespaces proxy rewrites the browser Origin
+# header to https://localhost:8000, so that one must be trusted too.
 if [ -n "${CODESPACE_NAME:-}" ]; then
   ORIGIN="https://${CODESPACE_NAME}-8000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
 else
@@ -34,7 +35,7 @@ services:
     ports:
       - "8000:8080"
     environment:
-      CSRF_TRUSTED_ORIGINS: "${ORIGIN} http://localhost:8000"
+      CSRF_TRUSTED_ORIGINS: "${ORIGIN} http://localhost:8000 https://localhost:8000"
       SKIP_SUPERUSER: "false"
       SUPERUSER_NAME: "admin"
       SUPERUSER_EMAIL: "admin@lab.local"
