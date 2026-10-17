@@ -784,7 +784,7 @@ class OrmApplier:
                 self.fail(f"{name} exists with another device type; delete it first", obj=existing)
                 continue
             self.device[name] = self.ensure("device", NbDevice, {"name": name, "site": self.site},
-                                            fields, loud=True)
+                                            fields)
 
     def interfaces(self):
         by_device = _defaultdict(list)
@@ -1150,6 +1150,12 @@ class BuildSite(Script):
         applier.run(dtypes)
         if applier.errors:
             raise AbortScript(f"{applier.errors} error(s), nothing was saved.")
+
+        created = applier.stats["device"]["create"]
+        if created:
+            self.log_info(f"{created} new device(s), {applier.stats['cable']['create']} new cable(s), "
+                          f"{applier.stats['ip-address']['create']} new IP address(es). "
+                          "Full table in the Output below.")
 
         # 4. validate what is now in NetBox
         result = evaluate(OrmSnapshot(applier.site))

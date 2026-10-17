@@ -159,7 +159,7 @@ class OrmApplier:
                 self.fail(f"{name} exists with another device type; delete it first", obj=existing)
                 continue
             self.device[name] = self.ensure("device", NbDevice, {"name": name, "site": self.site},
-                                            fields, loud=True)
+                                            fields)
 
     def interfaces(self):
         by_device = _defaultdict(list)

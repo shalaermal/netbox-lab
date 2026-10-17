@@ -115,6 +115,12 @@ class BuildSite(Script):
         if applier.errors:
             raise AbortScript(f"{applier.errors} error(s), nothing was saved.")
 
+        created = applier.stats["device"]["create"]
+        if created:
+            self.log_info(f"{created} new device(s), {applier.stats['cable']['create']} new cable(s), "
+                          f"{applier.stats['ip-address']['create']} new IP address(es). "
+                          "Full table in the Output below.")
+
         # 4. validate what is now in NetBox
         result = evaluate(OrmSnapshot(applier.site))
         verdict = report_result(self, result)
