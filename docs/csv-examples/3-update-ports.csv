@@ -1,0 +1,6 @@
+id,device,name,lag,mode,vlan_group,untagged_vlan,tagged_vlans,description
+10349,LAB03-AGG-03,1/1/5,lag5,,,,,To LAB03-F3-ACC-01 1/1/49
+10404,LAB03-AGG-04,1/1/5,lag5,,,,,To LAB03-F3-ACC-01 1/1/50
+10751,LAB03-F3-ACC-01,1/1/49,lag1,,,,,To LAB03-AGG-03 1/1/5
+10752,LAB03-F3-ACC-01,1/1/50,lag1,,,,,To LAB03-AGG-04 1/1/5
+10703,LAB03-F3-ACC-01,1/1/1,,tagged,LAB03 VLANs,120,121,USER

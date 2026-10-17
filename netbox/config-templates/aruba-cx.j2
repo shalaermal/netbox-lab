@@ -76,10 +76,13 @@
 {#- default routes: access -> AGG active-gateway of its mgmt VLAN, core -> firewall cluster IP #}
 {% set r = namespace(routes=[]) %}
 {% if role == "access" and f.mgmt_vid %}
+{#- the gateway is the VIP in the same subnet as this switch's management IP #}
+{% set own_mgmt = device.interfaces.filter(name="vlan" ~ f.mgmt_vid).first().ip_addresses.exclude(role="vip").first() %}
 {% for agg in device.site.devices.filter(role__slug="agg") %}
 {% set svi = agg.interfaces.filter(name="vlan" ~ f.mgmt_vid).first() %}
-{% set vip = svi.ip_addresses.filter(role="vip").first() if svi else none %}
-{% if vip and not r.routes %}{% set r.routes = [("0.0.0.0/0", vip.address.ip, "default via AGG VIP")] %}{% endif %}
+{% for vip in (svi.ip_addresses.filter(role="vip") if svi else []) %}
+{% if not r.routes and vip.address.cidr == own_mgmt.address.cidr %}{% set r.routes = [("0.0.0.0/0", vip.address.ip, "default via AGG VIP")] %}{% endif %}
+{% endfor %}
 {% endfor %}
 {% endif %}
 {% if role == "core" %}
@@ -258,7 +261,9 @@ interface {{ cx(i) }}
     active-gateway ip {{ vip.address.ip }}
 {% endif %}
 {% if role == "agg" and own_ips %}
-{% if vid in f.access_vids and vid != std.get("access_mgmt_vlan") %}
+{% set no_relay = std.get("access_mgmt_vlan") %}
+{% set no_relay = [no_relay] if no_relay is number else (no_relay or []) %}
+{% if vid in f.access_vids and vid not in no_relay %}
 {% for h in std.get("dhcp_servers", []) %}
     ip helper-address {{ h }}
 {% endfor %}

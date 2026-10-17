@@ -1,0 +1,5 @@
+device,name,type,mode,vlan_group,tagged_vlans,mtu,description
+LAB03-F3-ACC-01,lag1,lag,tagged,LAB03 VLANs,"98,120,121",9198,Uplink to AGG-03/04
+LAB03-AGG-03,lag5,lag,tagged,LAB03 VLANs,"98,120,121",9198,MC-LAG to LAB03-F3-ACC-01
+LAB03-AGG-04,lag5,lag,tagged,LAB03 VLANs,"98,120,121",9198,MC-LAG to LAB03-F3-ACC-01
+LAB03-F3-ACC-01,vlan98,virtual,,,,,Management

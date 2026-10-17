@@ -1,0 +1,2 @@
+address,status,role,device,interface,is_primary
+10.3.98.105/24,active,,LAB03-F3-ACC-01,vlan98,true

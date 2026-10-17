@@ -139,23 +139,57 @@ def evaluate(s):
                 if s.members(d, lag) != s.members(peer, lag):
                     r.warn("mclag", f"{d}/{peer}: {lag} uses different member ports")
 
-    # R6 every VLAN carried to access switches has a gateway on BOTH agg switches
-    carried = set()
+    # R6 every VLAN on an access uplink has a gateway on the switches that uplink goes to
+    #    (works for any number of aggregation pairs: each pair is checked on its own)
+    served = {}                                   # (frozenset of upstream switches) -> VLANs
     for d in access:
-        if (d, "lag1") in s.ifaces:
-            mode, untagged, tagged = s.l2(d, "lag1")
-            carried |= set(tagged) | ({untagged} if untagged else set())
-    for vid in sorted(carried):
-        vips = set()
-        for a in agg:
-            if (a, f"vlan{vid}") not in s.ifaces:
-                r.error("gateway", f"VLAN {vid} is trunked to access but {a} has no interface vlan{vid}")
+        if (d, "lag1") not in s.ifaces:
+            continue
+        mode, untagged, tagged = s.l2(d, "lag1")
+        ups = frozenset(p[0] for m in s.members(d, "lag1") if (p := s.peer(d, m)))
+        if ups:
+            served.setdefault(ups, set()).update(set(tagged) | ({untagged} if untagged else set()))
+    for ups, vids in sorted(served.items(), key=lambda x: sorted(x[0])):
+        for vid in sorted(vids):
+            vips = set()
+            for a in sorted(ups):
+                if (a, f"vlan{vid}") not in s.ifaces:
+                    r.error("gateway", f"VLAN {vid} is trunked to access but its upstream {a} "
+                                       f"has no interface vlan{vid}")
+                    continue
+                if not s.addresses(a, f"vlan{vid}"):
+                    r.error("gateway", f"{a} vlan{vid} has no IP address")
+                vips |= {str(ip.address) for ip in s.addresses(a, f"vlan{vid}", vip=True)}
+            if len(vips) != 1:
+                r.error("gateway", f"VLAN {vid} on {'/'.join(sorted(ups))}: expected exactly one "
+                                   f"VIP (active-gateway), found {sorted(vips) or 'none'}")
+
+    # R6b a VLAN used on an access port must be carried on that switch's uplink,
+    #     otherwise the users on that port are cut off from their gateway
+    for d in access:
+        if (d, "lag1") not in s.ifaces:
+            continue
+        mode, untagged, tagged = s.l2(d, "lag1")
+        carried = set(tagged) | ({untagged} if untagged else set())
+        missing = {}
+        for i in s.by_device[d]:
+            if s.kind(i) == "lag" or i.lag is not None or not i.enabled or not s.mode(i):
                 continue
-            if not s.addresses(a, f"vlan{vid}"):
-                r.error("gateway", f"{a} vlan{vid} has no IP address")
-            vips |= {str(ip.address) for ip in s.addresses(a, f"vlan{vid}", vip=True)}
-        if len(vips) != 1:
-            r.error("gateway", f"VLAN {vid}: expected exactly one VIP (active-gateway), found {sorted(vips)}")
+            _, u, tg = s.l2(d, i.name)
+            for vid in (set(tg) | ({u} if u else set())) - carried:
+                if s.vlans.get(vid) is not None and s.vlans[vid].name == "Parking":
+                    continue
+                missing.setdefault(vid, []).append(i.name)
+        for vid, ports in sorted(missing.items()):
+            r.error("uplink", f"{d}: VLAN {vid} is used on {len(ports)} port(s) "
+                              f"({ports[0]}{', ...' if len(ports) > 1 else ''}) but not carried on lag1")
+
+    # R6c a trunk without any VLAN is almost always a mistake
+    for (d, name), i in s.ifaces.items():
+        if s.is_switch(d) and s.mode(i) == "tagged" and i.lag is None:
+            _, u, tg = s.l2(d, name)
+            if not tg and not u:
+                r.warn("trunk", f"{d} {name} is a trunk (tagged) with no VLANs")
 
     # R7 every VLAN used on an interface belongs to this site's VLAN group
     for (d, name), i in s.ifaces.items():

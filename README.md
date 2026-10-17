@@ -132,6 +132,15 @@ that source. After a `git pull`, click **Sync**.
 
 ---
 
+### A different design (more aggregation pairs, other links)
+*Build site* creates one reference architecture. For any other design, enter it
+in NetBox yourself (GUI or CSV import): the config template renders whatever NetBox
+contains, for any number of core / aggregation switches. See
+**[docs/build-by-hand.md](docs/build-by-hand.md)**: how a config is linked to a device,
+the exact data the template expects, and tested CSV files.
+
+---
+
 ## Git workflow
 
 ```bash
