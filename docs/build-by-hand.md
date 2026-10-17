@@ -178,6 +178,21 @@ Device types: import the real ones from
 repo has the Aruba ones in `devicetypes/`, and Build site imports them
 automatically). Creating a device then creates all its physical ports.
 
+### Excel workbook: a whole site, ready to import
+
+[`LAB20-netbox-import.xlsx`](LAB20-netbox-import.xlsx) builds a complete small site
+(2 core, 2 aggregation, 10 access) with one sheet per Import page, in order, plus a
+README sheet. Copy a sheet's cells and paste them into the Import box (tab-separated
+data is detected automatically). Tested end to end: all sheets import, *Validate site*
+reports 0 errors, every switch renders. Regenerate it with
+`python tools/make_import_workbook.py docs/LAB20-netbox-import.xlsx`.
+
+Two NetBox details it handles:
+- On **interface** imports the VRF is looked up by RD, so the column is `vrf.name`
+  (`<field>.<attribute>` works for any column).
+- Updating existing ports needs their IDs: the `_ids` sheet takes the interface export
+  and the `id` column of `08_ports_update` fills itself with `INDEX/MATCH`.
+
 ### CSV files
 
 Every **Import** page accepts CSV pasted into the text box or uploaded. The files

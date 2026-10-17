@@ -34,8 +34,10 @@ class Snapshot:
             if dev in self.devices:
                 self.ips[(dev, obj.name)].append(ip)
 
-        group = nb.ipam.vlan_groups.get(slug=site_slug)
-        self.vlans = {v.vid: v for v in nb.ipam.vlans.filter(group_id=group.id, limit=0)} if group else {}
+        # VLANs of every VLAN group scoped to this site (any group name / slug)
+        groups = list(nb.ipam.vlan_groups.filter(scope_type="dcim.site", scope_id=sid, limit=0))
+        self.vlans = {v.vid: v for v in nb.ipam.vlans.filter(group_id=[g.id for g in groups], limit=0)} \
+            if groups else {}
         self.prefixes = list(nb.ipam.prefixes.filter(site_id=sid, limit=0))
 
     # ------------------------------------------------------------------ helpers

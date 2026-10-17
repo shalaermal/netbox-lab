@@ -320,8 +320,10 @@ class OrmSnapshot:
                                            assigned_object_id__in=list(by_id)).select_related("vrf"):
             i = by_id[ip.assigned_object_id]
             self.ips[(i.device.name, i.name)].append(ip)
-        group = VLANGroup.objects.filter(slug=site.slug).first()
-        self.vlans = {v.vid: v for v in VLAN.objects.filter(group=group)} if group else {}
+        # VLANs of every VLAN group scoped to this site (any group name / slug)
+        site_ct = ContentType.objects.get_for_model(Site)
+        groups = VLANGroup.objects.filter(scope_type=site_ct, scope_id=site.pk)
+        self.vlans = {v.vid: v for v in VLAN.objects.filter(group__in=groups)}
         self.prefixes = list(NbPrefix.objects.filter(_site=site).select_related("vlan", "vrf"))
         self._ctx = {}
 
