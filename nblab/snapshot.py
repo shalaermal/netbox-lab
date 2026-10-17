@@ -54,10 +54,9 @@ class Snapshot:
         i = self.ifaces[(dev, name)]
         if i.lag is not None:
             i = self.ifaces[(dev, i.lag.name)]
-        mode = i.mode.value if i.mode else None
-        return (mode,
+        return (self.mode(i),
                 i.untagged_vlan.vid if i.untagged_vlan else None,
-                tuple(sorted(v.vid for v in (i.tagged_vlans or []))))
+                tuple(sorted(v.vid for v in self.tagged(i))))
 
     def mtu(self, dev, name):
         """Effective MTU (a LAG member uses its parent LAG's MTU, default 1500)."""
@@ -81,7 +80,7 @@ class Snapshot:
     def addresses(self, dev, name, role=None, vip=False):
         out = []
         for ip in self.ips.get((dev, name), []):
-            r = ip.role.value if ip.role else None
+            r = self.ip_role(ip)
             if vip and r != "vip":
                 continue
             if not vip and r == "vip":
@@ -90,6 +89,23 @@ class Snapshot:
                 continue
             out.append(ip)
         return out
+
+    # ---- small accessors: the ORM snapshot implements the same ones ----------
+    @staticmethod
+    def kind(i):
+        return i.type.value
+
+    @staticmethod
+    def mode(i):
+        return i.mode.value if i.mode else None
+
+    @staticmethod
+    def tagged(i):
+        return list(i.tagged_vlans or [])
+
+    @staticmethod
+    def ip_role(ip):
+        return ip.role.value if ip.role else None
 
     @staticmethod
     def iface_net(ip):

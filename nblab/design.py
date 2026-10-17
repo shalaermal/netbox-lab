@@ -1,6 +1,9 @@
 """Turn the design intent (intent/*.yml) into a complete, explicit design.
 
-This module is pure Python: it does not talk to NetBox. It answers the question
+This module is pure Python: it does not talk to NetBox and reads no files
+(the caller passes the intent and the device type port lists in). That is
+what lets the SAME code run from the command line and inside NetBox as a
+Custom Script (see tools/bundle_scripts.py). It answers the question
 "what EXACTLY should exist?" - every device, interface, LAG, cable, VLAN,
 prefix and IP address - so that it can be tested offline and then synced.
 """
@@ -9,7 +12,6 @@ import ipaddress
 import re
 from dataclasses import dataclass, field
 
-from .config import DEVICETYPE_DIR, INTENT_DIR, load_yaml
 
 
 class DesignError(Exception):
@@ -114,6 +116,19 @@ class Design:
 
 # --------------------------------------------------------------------------- helpers
 
+def vlan_ranges(vids):
+    """[20, 21, 22, 23, 40] -> '20-23,40'"""
+    vids = sorted(set(int(v) for v in vids))
+    out, i = [], 0
+    while i < len(vids):
+        j = i
+        while j + 1 < len(vids) and vids[j + 1] == vids[j] + 1:
+            j += 1
+        out.append(str(vids[i]) if i == j else f"{vids[i]}-{vids[j]}")
+        i = j + 1
+    return ",".join(out)
+
+
 def expand_ports(spec):
     """'1-36' -> [1..36], '41,43-44' -> [41, 43, 44]"""
     out = []
@@ -127,24 +142,6 @@ def expand_ports(spec):
     return out
 
 
-def load_device_type_ports():
-    """slug -> list of interface names, read from the device type YAML files."""
-    ports = {}
-    for path in sorted(DEVICETYPE_DIR.glob("*.yaml")):
-        data = load_yaml(path)
-        ports[data["slug"]] = [i["name"] for i in data.get("interfaces", [])]
-    return ports
-
-
-def load_intent(site_file="site-lab01.yml"):
-    return {
-        "site": load_yaml(INTENT_DIR / site_file),
-        "vlans": load_yaml(INTENT_DIR / "vlan-plan.yml"),
-        "profiles": load_yaml(INTENT_DIR / "port-profiles.yml"),
-        "standards": load_yaml(INTENT_DIR / "standards.yml"),
-    }
-
-
 def net(n, octet, host=None, plen=24):
     if host is None:
         return f"10.{n}.{octet}.0/{plen}"
@@ -153,8 +150,9 @@ def net(n, octet, host=None, plen=24):
 
 # --------------------------------------------------------------------------- build
 
-def build(intent=None):
-    intent = intent or load_intent()
+def build(intent, dt_ports):
+    """intent: dict with keys site, vlans, profiles, standards (see intent/*.yml).
+    dt_ports: {device type slug: [interface names]} of the models used."""
     s = intent["site"]
     vp = intent["vlans"]
     pp = intent["profiles"]
@@ -163,9 +161,12 @@ def build(intent=None):
     sname = site["name"]
     domain = site.get("domain", "lab.local")
     ports = s["ports"]
-    dt_ports = load_device_type_ports()
-
-    d = Design(site=site, standards=intent["standards"])
+    # standards become a NetBox config context; add the few design facts the
+    # config template needs and cannot derive on its own
+    standards = dict(intent["standards"])
+    standards["access_mgmt_vlan"] = int(vp["infra"]["access_mgmt_vlan"])
+    standards.setdefault("timezone", site.get("timezone", "Europe/Berlin").lower())
+    d = Design(site=site, standards=standards)
 
     # ---- locations
     d.locations.append((f"{site['slug']}-mdf", "MDF", "Main distribution room"))

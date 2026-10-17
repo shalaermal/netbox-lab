@@ -1,0 +1,299 @@
+{# ==========================================================================
+    Aruba AOS-CX switch configuration - NetBox Config Template
+    --------------------------------------------------------------------------
+    Rendered BY NETBOX from the device object (Device -> "Render Config" tab,
+    or POST /api/dcim/devices/<id>/render-config/). One file on purpose: it
+    works both when synced from git (Data Source) and when uploaded by
+    `python -m nblab apply`.
+
+    Environment parameters (set on the Config Template in NetBox):
+        {"trim_blocks": true, "lstrip_blocks": true}
+
+    Data used:
+      device + its interfaces, VLANs, IP addresses, cables  (NetBox objects)
+      config context: ntp/dns/syslog/tacacs/snmp/ospf/spanning_tree/... and
+                      "vsx" (local context of core/agg devices)
+    IP role "vip" = virtual / anycast address (VSX active-gateway).
+    Secrets are placeholders <<NAME>>, filled in at deploy time.
+   ========================================================================== -#}
+{% set std = device.get_config_context() %}
+{% set role = device.role.slug %}
+{% set vsx = std.get("vsx") %}
+{% set mgmt_vrf = "mgmt" if role in ("core", "agg") else "default" %}
+{% set ifaces = device.interfaces.all() %}
+{% set location = device.location.name if device.location else "" %}
+{# ------------------------------------------------------------- helpers #}
+{% macro kind(i) %}{% if i.name == "mgmt" %}mgmt{% elif i.type == "lag" %}lag{% elif i.name.startswith("vlan") %}svi{% elif i.name.startswith("loopback") %}loopback{% else %}physical{% endif %}{% endmacro %}
+{% macro cx(i) %}{% if i.name.startswith("lag") %}lag {{ i.name[3:] }}{% elif i.name.startswith("vlan") %}vlan {{ i.name[4:] }}{% elif i.name.startswith("loopback") %}loopback {{ i.name[8:] }}{% else %}{{ i.name }}{% endif %}{% endmacro %}
+{% macro ranges(vids) %}{% set ns = namespace(out=[], start=none, prev=none) %}{% for v in vids | unique | sort %}{% if ns.prev is not none and v == ns.prev + 1 %}{% set ns.prev = v %}{% else %}{% if ns.start is not none %}{% set ns.out = ns.out + [ns.start ~ "" if ns.start == ns.prev else ns.start ~ "-" ~ ns.prev] %}{% endif %}{% set ns.start = v %}{% set ns.prev = v %}{% endif %}{% endfor %}{% if ns.start is not none %}{% set ns.out = ns.out + [ns.start ~ "" if ns.start == ns.prev else ns.start ~ "-" ~ ns.prev] %}{% endif %}{{ ns.out | join(",") }}{% endmacro %}
+{% macro l2(i) %}
+    no routing
+{% if i.mode == "access" %}
+    vlan access {{ i.untagged_vlan.vid }}
+{% elif i.mode == "tagged" %}
+{% set vids = i.tagged_vlans.all() | map(attribute="vid") | list %}
+{% if i.untagged_vlan %}{% set vids = vids + [i.untagged_vlan.vid] %}{% endif %}
+    vlan trunk native {{ i.untagged_vlan.vid if i.untagged_vlan else 1 }}
+    vlan trunk allowed {{ ranges(vids) }}
+{% elif i.mode == "tagged-all" %}
+    vlan trunk native 1
+    vlan trunk allowed all
+{% endif %}
+{% endmacro %}
+{% macro state(i) %}
+{% if i.enabled %}
+    no shutdown
+{% else %}
+    shutdown
+{% endif %}
+{% endmacro %}
+{# ------------------------------------------------------- derived facts #}
+{% set f = namespace(used=[], mgmt_vid=none, uplink_vids=[], access_vids=[], has_ka=false,
+                     router_id=none, ka_src=none, ka_peer=none, mgmt_ip=none, mgmt_gw=none) %}
+{% for i in ifaces %}
+{% if i.untagged_vlan %}{% set f.used = f.used + [i.untagged_vlan.vid] %}{% endif %}
+{% set f.used = f.used + (i.tagged_vlans.all() | map(attribute="vid") | list) %}
+{% if kind(i) == "svi" %}{% set f.used = f.used + [i.name[4:] | int] %}{% endif %}
+{% set own = i.ip_addresses.exclude(role="vip").first() %}
+{% if role == "access" and kind(i) == "svi" and own %}{% set f.mgmt_vid = i.name[4:] | int %}{% endif %}
+{% if role == "access" and kind(i) == "lag" %}
+{% set f.uplink_vids = (i.tagged_vlans.all() | map(attribute="vid") | list) + ([i.untagged_vlan.vid] if i.untagged_vlan else []) %}
+{% endif %}
+{% if role == "agg" and kind(i) == "lag" and vsx and i.name != "lag256" %}
+{% set f.access_vids = f.access_vids + (i.tagged_vlans.all() | map(attribute="vid") | list) + ([i.untagged_vlan.vid] if i.untagged_vlan else []) %}
+{% endif %}
+{% if i.vrf and i.vrf.name == "KA" %}
+{% set f.has_ka = true %}
+{% if own %}
+{% set f.ka_src = own.address.ip %}
+{% set f.ka_peer = own.address.network if own.address.ip != own.address.network else own.address.network + 1 %}
+{% endif %}
+{% endif %}
+{% if kind(i) == "loopback" and own %}{% set f.router_id = own.address.ip %}{% endif %}
+{% if kind(i) == "mgmt" and own %}{% set f.mgmt_ip = own.address %}{% set f.mgmt_gw = own.address.network + 1 %}{% endif %}
+{% endfor %}
+{% set snooping = (f.uplink_vids | reject("equalto", f.mgmt_vid) | unique | sort | list) if role == "access" else [] %}
+{#- default routes: access -> AGG active-gateway of its mgmt VLAN, core -> firewall cluster IP #}
+{% set r = namespace(routes=[]) %}
+{% if role == "access" and f.mgmt_vid %}
+{% for agg in device.site.devices.filter(role__slug="agg") %}
+{% set svi = agg.interfaces.filter(name="vlan" ~ f.mgmt_vid).first() %}
+{% set vip = svi.ip_addresses.filter(role="vip").first() if svi else none %}
+{% if vip and not r.routes %}{% set r.routes = [("0.0.0.0/0", vip.address.ip, "default via AGG VIP")] %}{% endif %}
+{% endfor %}
+{% endif %}
+{% if role == "core" %}
+{% for fw in device.site.devices.filter(role__slug="firewall") %}
+{% for i in fw.interfaces.all() %}
+{% set vip = i.ip_addresses.filter(role="vip").first() %}
+{% if vip and not r.routes %}{% set r.routes = [("0.0.0.0/0", vip.address.ip, "default to firewall")] %}{% endif %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% set sv = namespace(vlans=[]) %}
+{% for g in device.site.vlan_groups.all() %}{% set sv.vlans = sv.vlans + (g.vlans.all() | list) %}{% endfor %}
+{# ================================================================ output #}
+!
+! {{ device.name }}  ({{ device.device_type.model }}, role {{ role }}, {{ device.site.name }} {{ location }})
+! GENERATED FROM NETBOX - DO NOT EDIT BY HAND.
+! Change the intent / NetBox, then run: python -m nblab render
+! Secrets are placeholders like <<NAME>>; they are filled in at deploy time.
+!
+hostname {{ device.name }}
+banner motd !
+{{ std.banner | trim }}
+!
+clock timezone {{ std.get("timezone", "europe/berlin") | lower }}
+{% if f.has_ka %}
+vrf KA
+{% endif %}
+{% for s in std.ntp_servers %}
+ntp server {{ s }} iburst
+{% endfor %}
+ntp enable
+ntp vrf {{ mgmt_vrf }}
+{% for s in std.dns_servers %}
+ip dns server-address {{ s }} vrf {{ mgmt_vrf }}
+{% endfor %}
+{% for s in std.syslog_servers %}
+logging {{ s }} vrf {{ mgmt_vrf }}
+{% endfor %}
+!
+ssh server vrf {{ mgmt_vrf }}
+https-server vrf {{ mgmt_vrf }}
+snmp-server vrf {{ mgmt_vrf }}
+snmp-server system-location {{ std.snmp.location_prefix }} {{ location }}
+snmpv3 user {{ std.snmp.v3_user }} auth sha auth-pass plaintext <<SNMP_AUTH_PASS>> priv aes priv-pass plaintext <<SNMP_PRIV_PASS>>
+!
+user admin group administrators password plaintext <<LOCAL_ADMIN_PASSWORD>>
+{% for s in std.tacacs_servers %}
+tacacs-server host {{ s }} key plaintext <<TACACS_KEY>> vrf {{ mgmt_vrf }}
+{% endfor %}
+aaa group server tacacs TACACS
+{% for s in std.tacacs_servers %}
+    server {{ s }} vrf {{ mgmt_vrf }}
+{% endfor %}
+aaa authentication login default group TACACS local
+aaa accounting all-mgmt default start-stop group TACACS
+!
+{# ------------------------------------------------------------- VLANs #}
+{% if snooping %}
+dhcpv4-snooping
+{% endif %}
+{% for v in sv.vlans | sort(attribute="vid") if v.vid in f.used %}
+vlan {{ v.vid }}
+    name {{ v.name }}
+{% if v.vid in snooping %}
+    dhcpv4-snooping
+{% endif %}
+{% endfor %}
+{# ------------------------------------------------------- spanning tree #}
+{% if role in ("core", "agg", "access") %}
+!
+spanning-tree mode {{ std.spanning_tree.mode }}
+spanning-tree
+spanning-tree config-name {{ std.spanning_tree.config_name }}
+spanning-tree config-revision {{ std.spanning_tree.config_revision }}
+{% if role in ("core", "agg") %}
+spanning-tree priority 0
+{% endif %}
+{% endif %}
+{# -------------------------------------------------------------- mgmt #}
+{% for i in ifaces if kind(i) == "mgmt" %}
+!
+interface mgmt
+{% if f.mgmt_ip %}
+    no shutdown
+    ip static {{ f.mgmt_ip }}
+    default-gateway {{ f.mgmt_gw }}
+{% else %}
+    shutdown
+{% endif %}
+{% endfor %}
+{# ---------------------------------------------- LAGs (before members) #}
+{% for i in ifaces if kind(i) == "lag" %}
+{% set mclag = vsx and i.name != "lag256" %}
+!
+interface {{ cx(i) }}{{ " multi-chassis" if mclag else "" }}
+{% if i.description %}
+    description {{ i.description }}
+{% endif %}
+{{ state(i) | trim("\n") }}
+{% if i.mtu %}
+    mtu {{ i.mtu }}
+{% endif %}
+{{ l2(i) | trim("\n") }}
+    lacp mode active
+{% if role == "agg" and mclag %}
+    spanning-tree root-guard
+{% endif %}
+{% if role == "access" %}
+    dhcpv4-snooping trust
+{% endif %}
+{% endfor %}
+{# ---------------------------------------------------- physical ports #}
+{% for i in ifaces if kind(i) == "physical" %}
+{% set own = i.ip_addresses.exclude(role="vip").first() %}
+!
+interface {{ i.name }}
+{% if i.description %}
+    description {{ i.description }}
+{% endif %}
+{{ state(i) | trim("\n") }}
+{% if i.mtu %}
+    mtu {{ i.mtu }}
+{% endif %}
+{% if i.lag %}
+    lag {{ i.lag.name[3:] }}
+{% elif own %}
+{% set peer = i.link_peers[0] if i.link_peers else none %}
+{% set to_switch = peer and peer.device and peer.device.platform and peer.device.platform.slug == device.platform.slug %}
+    routing
+{% if i.vrf and i.vrf.name != "mgmt" %}
+    vrf attach {{ i.vrf.name }}
+{% endif %}
+{% if i.mtu %}
+    ip mtu {{ i.mtu }}
+{% endif %}
+    ip address {{ own.address }}
+{% if not i.vrf and to_switch %}
+    ip ospf {{ std.ospf.process }} area {{ std.ospf.area }}
+    ip ospf network point-to-point
+{% endif %}
+{% elif i.mode %}
+{{ l2(i) | trim("\n") }}
+{% if role == "access" %}
+    spanning-tree port-type admin-edge
+    spanning-tree bpdu-guard
+    loop-protect
+{% endif %}
+{% endif %}
+{% endfor %}
+{# --------------------------------------------------------- loopbacks #}
+{% for i in ifaces if kind(i) == "loopback" %}
+{% set own = i.ip_addresses.exclude(role="vip").first() %}
+{% if own %}
+!
+interface {{ cx(i) }}
+    ip address {{ own.address }}
+    ip ospf {{ std.ospf.process }} area {{ std.ospf.area }}
+{% endif %}
+{% endfor %}
+{# -------------------------------------------------------------- SVIs #}
+{% for i in ifaces if kind(i) == "svi" %}
+{% set vid = i.name[4:] | int %}
+{% set own_ips = i.ip_addresses.exclude(role="vip") %}
+{% set vip = i.ip_addresses.filter(role="vip").first() %}
+!
+interface {{ cx(i) }}
+{% if i.description %}
+    description {{ i.description }}
+{% endif %}
+{{ state(i) | trim("\n") }}
+{% for ip in own_ips %}
+    ip address {{ ip.address }}
+{% endfor %}
+{% if vip %}
+    active-gateway ip mac {{ std.active_gateway_mac }}
+    active-gateway ip {{ vip.address.ip }}
+{% endif %}
+{% if role == "agg" and own_ips %}
+{% if vid in f.access_vids and vid != std.get("access_mgmt_vlan") %}
+{% for h in std.get("dhcp_servers", []) %}
+    ip helper-address {{ h }}
+{% endfor %}
+{% endif %}
+    ip ospf {{ std.ospf.process }} area {{ std.ospf.area }}
+    ip ospf passive
+{% endif %}
+{% endfor %}
+{# --------------------------------------------------------------- VSX #}
+{% if vsx %}
+!
+vsx
+    system-mac {{ vsx.system_mac }}
+    inter-switch-link lag 256
+    role {{ vsx.role }}
+{% if f.ka_peer %}
+    keepalive peer {{ f.ka_peer }} source {{ f.ka_src }} vrf KA
+{% endif %}
+    vsx-sync aaa dns mclag-interfaces snmp ssh stp-global time
+{% endif %}
+{# ----------------------------------------------------------- routing #}
+{% if r.routes %}
+!
+{% for prefix, nexthop, comment in r.routes %}
+! {{ comment }}
+ip route {{ prefix }} {{ nexthop }}
+{% endfor %}
+{% endif %}
+{% if f.router_id %}
+!
+router ospf {{ std.ospf.process }}
+    router-id {{ f.router_id }}
+{% if role == "core" %}
+    default-information originate
+{% endif %}
+    area {{ std.ospf.area }}
+{% endif %}
+!{{ "\n" }}

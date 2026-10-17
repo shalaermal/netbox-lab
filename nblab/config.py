@@ -9,11 +9,15 @@ import yaml
 REPO_DIR = Path(__file__).resolve().parent.parent
 INTENT_DIR = REPO_DIR / "intent"
 DEVICETYPE_DIR = REPO_DIR / "devicetypes"
-TEMPLATE_DIR = REPO_DIR / "templates"
 CONFIG_DIR = REPO_DIR / "configs"
 
 TAG = "lab-managed"          # every object created by the code gets this tag
 PLATFORM = {"name": "Aruba AOS-CX", "slug": "aruba-aoscx"}
+CONFIG_TEMPLATE = {
+    "name": "Aruba CX",
+    "path": REPO_DIR / "netbox" / "config-templates" / "aruba-cx.j2",
+    "environment_params": {"trim_blocks": True, "lstrip_blocks": True},
+}
 
 
 def load_yaml(path):

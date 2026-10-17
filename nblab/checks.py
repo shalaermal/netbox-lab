@@ -9,7 +9,7 @@ import ipaddress
 import re
 from collections import Counter
 
-from .snapshot import Snapshot
+from .design import vlan_ranges
 
 
 class Result:
@@ -24,7 +24,20 @@ class Result:
 
 
 def run_checks(nb, snap=None, quiet=False):
-    s = snap or Snapshot(nb)
+    """Command-line entry point: read NetBox over the API, evaluate, print."""
+    from .snapshot import Snapshot
+    r = evaluate(snap or Snapshot(nb))
+    if not quiet:
+        _print(r)
+    return not r.errors
+
+
+def evaluate(s):
+    """Run every rule against a snapshot and return a Result.
+
+    `s` is any object with the Snapshot interface: nblab.snapshot (REST API)
+    or the ORM snapshot used inside NetBox's Custom Script.
+    """
     r = Result()
     site = s.site.name
 
@@ -116,8 +129,8 @@ def run_checks(nb, snap=None, quiet=False):
                   for ip in s.addresses(dev, i.name) if i.vrf and i.vrf.name == "KA"]
             if len(ka) != 2 or s.iface_net(ka[0]) != s.iface_net(ka[1]):
                 r.error("vsx", f"{d}/{peer}: keepalive needs one IP each in VRF KA, same /31")
-            lags_a = {i.name for i in s.by_device[d] if i.type.value == "lag" and i.name != "lag256"}
-            lags_b = {i.name for i in s.by_device[peer] if i.type.value == "lag" and i.name != "lag256"}
+            lags_a = {i.name for i in s.by_device[d] if s.kind(i) == "lag" and i.name != "lag256"}
+            lags_b = {i.name for i in s.by_device[peer] if s.kind(i) == "lag" and i.name != "lag256"}
             for lag in sorted(lags_a ^ lags_b):
                 r.error("mclag", f"{d}/{peer}: {lag} exists on only one VSX member")
             for lag in sorted(lags_a & lags_b):
@@ -146,7 +159,7 @@ def run_checks(nb, snap=None, quiet=False):
 
     # R7 every VLAN used on an interface belongs to this site's VLAN group
     for (d, name), i in s.ifaces.items():
-        for v in ([i.untagged_vlan] if i.untagged_vlan else []) + list(i.tagged_vlans or []):
+        for v in ([i.untagged_vlan] if i.untagged_vlan else []) + s.tagged(i):
             if v.vid not in s.vlans or s.vlans[v.vid].id != v.id:
                 r.error("vlan", f"{d} {name} uses VLAN {v.vid} from outside the {site} VLAN group")
 
@@ -161,7 +174,7 @@ def run_checks(nb, snap=None, quiet=False):
     count = Counter()
     for (d, name), ips in s.ips.items():
         for ip in ips:
-            if not (ip.role and ip.role.value == "vip"):
+            if s.ip_role(ip) != "vip":
                 count[(str(ip.address).split("/")[0], ip.vrf.name if ip.vrf else None)] += 1
     for (addr, vrf), c in count.items():
         if c > 1:
@@ -176,9 +189,7 @@ def run_checks(nb, snap=None, quiet=False):
             if not any(a in n and v == vrf for n, v in nets):
                 r.warn("ip", f"{d} {name} {ip.address} is not inside any prefix of {site}")
 
-    if not quiet:
-        _print(r)
-    return not r.errors
+    return r
 
 
 def _fmt(l2):
@@ -189,7 +200,6 @@ def _fmt(l2):
 
 
 def _ranges(vids):
-    from .render import vlan_ranges
     return vlan_ranges(vids) or "-"
 
 

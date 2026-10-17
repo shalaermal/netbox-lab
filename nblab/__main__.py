@@ -6,6 +6,7 @@
   check             validate the data in NetBox (topology, VLANs, IPs, naming)
   render            generate switch configs from NetBox into configs/<site>/
   reset --yes       delete everything tagged lab-managed
+  setup-gui         install the Custom Scripts + Config Template into NetBox (GUI workflow)
 """
 
 import argparse
@@ -29,11 +30,13 @@ def main():
     sr.add_argument("--device", help="render only this device")
     sx = sub.add_parser("reset")
     sx.add_argument("--yes", action="store_true")
+    sub.add_parser("setup-gui")
     args = p.parse_args()
 
     if args.cmd == "design":
-        from .design import build, summary
-        print(json.dumps(summary(build()), indent=2))
+        from .design import summary
+        from .intent import build_from_repo
+        print(json.dumps(summary(build_from_repo()), indent=2))
         return 0
 
     from .config import connect
@@ -50,6 +53,9 @@ def main():
     if args.cmd == "render":
         from .render import render_all
         return 0 if render_all(nb, force=args.force, only=args.device) else 1
+    if args.cmd == "setup-gui":
+        from .setup_gui import setup_gui
+        return setup_gui(nb)
     if args.cmd == "reset":
         from .reset import reset
         return reset(nb, args.yes)

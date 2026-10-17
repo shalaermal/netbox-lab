@@ -9,8 +9,8 @@ anything created by hand in NetBox is never touched by the prune step.
 
 from collections import Counter, defaultdict
 
-from .config import DEVICETYPE_DIR, PLATFORM, TAG, load_yaml
-from .design import build
+from .config import CONFIG_TEMPLATE, PLATFORM, TAG
+from .intent import build_from_repo, load_device_types
 
 ROLE_COLORS = {"core": "1565c0", "agg": "6a1b9a", "access": "2e7d32", "firewall": "c62828"}
 
@@ -36,6 +36,9 @@ def diff(obj, fields):
     changes = {}
     for key, want in fields.items():
         have = current.get(key)
+        raw = getattr(obj, key, None)
+        if isinstance(want, dict) and hasattr(raw, "serialize") and getattr(raw, "id", None) is None:
+            have = dict(raw)        # pynetbox wraps plain JSON objects in a Record
         if key == "custom_fields":
             have = have or {}
             if any(have.get(k) != v for k, v in want.items()):
@@ -61,7 +64,7 @@ class Syncer:
         self.verbose = verbose
         self.stats = defaultdict(Counter)
         self.errors = []
-        self.d = build()
+        self.d = build_from_repo()
 
     # ------------------------------------------------------------------ output
     def log(self, action, kind, label, detail=""):
@@ -145,11 +148,27 @@ class Syncer:
         self.dev_role = {r: self.ensure("dev-role", nb.dcim.device_roles, {"slug": r},
                                         {"name": r.capitalize(), "color": c, "tags": t})
                          for r, c in ROLE_COLORS.items()}
+        self.config_template = self.sync_config_template()
         self.platform = self.ensure("platform", nb.dcim.platforms, {"slug": PLATFORM["slug"]},
-                                    {"name": PLATFORM["name"], "tags": t})
-        self.dtype = {}
-        for path in sorted(DEVICETYPE_DIR.glob("*.yaml")):
-            self.dtype[load_yaml(path)["slug"]] = self.import_device_type(load_yaml(path))
+                                    {"name": PLATFORM["name"],
+                                     "config_template": self.oid(self.config_template), "tags": t})
+        self.dtype = {slug: self.import_device_type(data)
+                      for slug, data in load_device_types().items()}
+
+    def sync_config_template(self):
+        """Upload netbox/config-templates/aruba-cx.j2 as the "Aruba CX" Config Template.
+        If the template is synced from a git Data Source (GUI workflow), leave it alone."""
+        existing = self.nb.extras.config_templates.get(name=CONFIG_TEMPLATE["name"])
+        if existing is not None and existing.data_source:
+            self.log("unchanged", "config-tmpl", f"{existing.name} (synced from data source)")
+            return existing
+        code = CONFIG_TEMPLATE["path"].read_text()
+        return self.ensure("config-tmpl", self.nb.extras.config_templates,
+                           {"name": CONFIG_TEMPLATE["name"]},
+                           {"template_code": code.rstrip("\n"),
+                            "environment_params": CONFIG_TEMPLATE["environment_params"],
+                            "description": "Aruba AOS-CX switch configuration (netbox-lab)",
+                            "tags": self.tags})
 
     def import_device_type(self, data):
         """Create a device type with its port templates (devicetype-library format).
@@ -201,7 +220,7 @@ class Syncer:
         # company standards -> config context bound to this site
         self.ensure("context", nb.extras.config_contexts, {"name": f"standards-{s['slug']}"},
                     {"weight": 1000, "data": d.standards, "sites": [sid] if sid else [],
-                     "description": "Generated from intent/standards.yml"})
+                     "description": "Company standards for this site (netbox-lab)"})
 
     # ------------------------------------------------------------------ VLANs / prefixes
     def sync_vlans_prefixes(self):

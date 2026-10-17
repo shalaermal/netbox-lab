@@ -1,9 +1,0 @@
-!
-vsx
-    system-mac {{ vsx.system_mac }}
-    inter-switch-link lag 256
-    role {{ vsx.role }}
-{% if vsx.keepalive_peer is defined %}
-    keepalive peer {{ vsx.keepalive_peer }} source {{ vsx.keepalive_src }} vrf KA
-{% endif %}
-    vsx-sync aaa dns mclag-interfaces snmp ssh stp-global time

@@ -9,12 +9,13 @@ from collections import Counter
 
 import pytest
 
-from nblab.design import build, expand_ports
+from nblab.design import expand_ports, vlan_ranges
+from nblab.intent import build_from_repo
 
 
 @pytest.fixture(scope="module")
 def d():
-    return build()
+    return build_from_repo()
 
 
 def test_size(d):
@@ -69,6 +70,10 @@ def test_edge_vlans_are_on_uplink(d):
             if i.kind == "physical" and i.mode and i.enabled:
                 used = set(i.tagged) | {i.untagged}
                 assert used <= trunk, (dev.name, i.name, used - trunk)
+
+
+def test_vlan_ranges():
+    assert vlan_ranges([23, 20, 21, 22, 40, 98, 99]) == "20-23,40,98-99"
 
 
 def test_expand_ports():

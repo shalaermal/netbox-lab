@@ -19,7 +19,6 @@ fi
 
 # Our local changes to netbox-docker:
 #  - publish NetBox on port 8000
-#  - trust the Codespaces https address (otherwise login fails with a CSRF error)
 #  - create the admin user automatically on first start
 # Trusted origins for login. The Codespaces proxy rewrites the browser Origin
 # header to https://localhost:8000, so that one must be trusted too.
@@ -29,11 +28,19 @@ else
   ORIGIN="https://*.app.github.dev"
 fi
 
+# The repo is mounted read-only at /opt/netbox-lab in the NetBox containers, so
+# NetBox can use it as a "Local" Data Source (scripts + config templates) with
+# no git credentials. The worker runs the Custom Scripts, so it needs it too.
 cat > "$NBD_DIR/docker-compose.override.yml" <<EOF
 services:
+  netbox-worker:
+    volumes:
+      - ${REPO_DIR}:/opt/netbox-lab:ro
   netbox:
     ports:
       - "8000:8080"
+    volumes:
+      - ${REPO_DIR}:/opt/netbox-lab:ro
     environment:
       CSRF_TRUSTED_ORIGINS: "${ORIGIN} http://localhost:8000 https://localhost:8000"
       SKIP_SUPERUSER: "false"

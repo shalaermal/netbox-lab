@@ -25,4 +25,3 @@ spanning_tree:
   config_revision: 1
 active_gateway_mac: "12:00:00:00:01:00"
 mtu_infra: 9198         # jumbo on core/agg/ISL links
-timezone: europe/berlin
