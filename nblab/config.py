@@ -35,7 +35,10 @@ def load_env():
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        key = key.strip()
+        # a real environment variable wins, but an EMPTY one must not hide .env
+        if not os.environ.get(key, "").strip():
+            os.environ[key] = value.strip().strip('"').strip("'")
 
 
 def connect():
